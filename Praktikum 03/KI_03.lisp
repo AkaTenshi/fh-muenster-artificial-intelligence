@@ -1,19 +1,19 @@
-(defconstant all-directions '(-8 -7 -6 -1 1 6 7 8))
+(defconstant all-directions '(-10 -9 -8 -1 1 8 9 10))
 
 (defconstant empty 0 "An empty square")
 (defconstant black 1 "A black piece")
 (defconstant white 2 "A white piece")
-(defconstant outer 3 "Marks squares outside the 8x8 board")
+(defconstant outer 3 "Marks squares outside the 6x7 board")
 
 (deftype piece () `(integer ,empty ,outer))
 
-(defun name-of (piece) (char ".@O?" piece))
+(defun my-name-of (piece) (char ".@O?" piece))
 
 (defun opponent (player) (if (eql player black) white black))
 
-(deftype board () '(simple-array piece (56)))
+(deftype board () '(simple-array piece (72)))
 
-(defun bref (board square) (aref board square))
+(defun bref (board square) (aref board (1- square)))
 (defsetf bref (board square) (val) 
   `(setf (aref ,board ,square) ,val))
 
@@ -21,21 +21,21 @@
   (copy-seq board))
 
 (defconstant all-squares
-  (loop for i from 6 to 48 collect i))
+  (loop for i from 10 to 63 when (<= 2 (mod i 9) 8) collect i))
 
 (defconstant all-columns
-  (loop for i from 1 to 7 collect i))
+  (loop for i from 2 to 8 collect i))
 
 (defun initial-board ()
   "Return a board, empty except for four pieces in the middle."
-  ;; Boards are 56-element vectors, with elements 8-49 used,
+  ;; Boards are 72-element vectors, with elements 8-49 used,
   ;; and the others marked with the sentinel OUTER. Initially
   ;; all squares are empty.
-  (let ((board (make-array 56 :element-type 'piece
+  (let ((board (make-array 72 :element-type 'piece
                            :initial-element outer)))
     (dolist (square all-squares)
       (setf (bref board square) empty))
-    board))
+      board))
 
 ;;;(print-board (initial-board))
 ;;;(initial-board)
@@ -47,12 +47,11 @@
 
 (defun valid-p (col)
   "Valid moves are numbers in the range 1-7."
-  (and (integerp col) (<= 1 col 7)))
+  (and (integerp col) (<= 2 col 8)))
 
 (defun legal-p (col board)
-  "A Legal move must be into an empty square, and it must
-  flip at least one opponent piece."
-  (eql (bref board (+ col 7)) empty))
+  "A Legal move must be into an empty square."
+  (eql (bref board (+ col 9)) empty))
 
 ;;; (legal-p 1 (initial-board))
 
@@ -63,8 +62,8 @@
 	board)
 
 (defun top-empty-square (board square)
-  (if (eql (bref board (+ square 7)) empty)
-      (top-empty-square board (+ square 7))
+  (if (eql (bref board (+ square 9)) empty)
+      (top-empty-square board (+ square 9))
       square))
 
 (defun next-to-play (board previous-player)
@@ -185,20 +184,16 @@
 
 (defun human (player board)
   "A human player for the game"
-  (format t "~&~c to move ~a: " (name-of player)
+  (format t "~&~c to move ~a: " (my-name-of player)
           (legal-moves board))
   (read))
 
 (defvar *move-number* 1 "The number of the move to be played")
 
-(defun play-game (bl-strategy wh-strategy &optional (print t) (minutes 30))
+(defun play-game (bl-strategy wh-strategy &optional (print t))
   "Play a game.  Return the score, where a positive
   difference means black, the first player, wins."
-  (let ((board (initial-board))
-        (clock (make-array (+ 1 (max black white))
-                           :initial-element 
-                           (* minutes 60 
-                              internal-time-units-per-second))))
+  (let ((board (initial-board)))
     (catch 'game-over
       (loop for *move-number* from 1
             for player = black then (next-to-play board player)
@@ -206,58 +201,44 @@
                                bl-strategy
                                wh-strategy)
             until (null player)
-            do (get-move strategy player board print clock))
+            do (get-move strategy player board print))
       (when print
         (format t "~&The game is over.  Final result:")
-        (print-board board clock))
+        (print-board board))
       (count-difference black board))))
 
-(defvar *clock* (make-array 3) "A copy of the game clock")
 (defvar *board* (initial-board) "A copy of the game board")
 
-(defun get-move (strategy player board print clock)
+(defun get-move (strategy player board print)
   "Call the player's strategy function to get a move.
   Keep calling until a legal move is made."
   ;; Note we don't pass the strategy function the REAL board.
   ;; If we did, it could cheat by changing the pieces on the board.
-  (when print (print-board board clock))
-  (replace *clock* clock)
-  (let* ((t0 (get-internal-real-time))
-         (col (funcall strategy player (replace *board* board)))
-         (t1 (get-internal-real-time)))
-    (decf (elt clock player) (- t1 t0))
+  (when print (print-board board))
+  (let* ((col (funcall strategy player (replace *board* board))))
     (cond
-      ((< (elt clock player) 0)
-       (format t "~&~c has no time left and forfeits."
-               (name-of player))
-       (THROW 'game-over (if (eql player black) -42 42)))
       ((eq col 'resign)
        (THROW 'game-over (if (eql player black) -42 42)))
       ((and (valid-p col) (legal-p col board))
        (when print
          (format t "~&~c moves to ~a." 
-                 (name-of player) (top-empty-square board col)))
+                 (my-name-of player) (top-empty-square board col)))
        (make-move col player board))
       (t (warn "Illegal move: ~a" col)
-         (get-move strategy player board print clock)))))
+         (get-move strategy player board print)))))
 
-(defun print-board (&optional (board *board*) clock)
+(defun print-board (&optional (board *board*))
   "Print a board, along with some statistics."
   ;; First print the header and the current score
-  (format t "~2&    1 2 3 4 5 6 7   [~c=~2a ~c=~2a]"
-          (name-of black) (count black board)
-          (name-of white) (count white board))
+  (format t "~2&    1 2 3 4 5 6 7")
   ;; Print the board itself
   (loop for row from 1 to 6 do
         (format t "~&  ~d " row)
-        (loop for col from 1 to 7
-              for piece = (bref board (+ col (* 7 row)))
-              do (format t "~c " (name-of piece))))
-  ;; Finally print the time remaining for each player
-  (when clock
-    (format t "  [~c=~a ~c=~a]~2&"
-            (name-of black) (time-string (elt clock black))
-            (name-of white) (time-string (elt clock white)))))
+        (loop for col from 2 to 8
+              for piece = (bref board (+ col (* 9 row)))
+              do (format t "~c " (my-name-of piece)))))
+            
+;;;(print-board (initial-board))
 
 (defun time-string (time)
   "Return a string representing this internal time in min:secs."
