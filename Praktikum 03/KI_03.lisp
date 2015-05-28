@@ -13,9 +13,9 @@
 
 (deftype board () '(simple-array piece (72)))
 
-(defun bref (board square) (aref board (1- square)))
+(defun bref (board square) (aref board square))
 (defsetf bref (board square) (val) 
-  `(setf (aref ,board ,square) ,val))
+  `(setf (aref ,board , square) ,val))
 
 (defun copy-board (board)
   (copy-seq board))
@@ -23,8 +23,12 @@
 (defconstant all-squares
   (loop for i from 10 to 63 when (<= 2 (mod i 9) 8) collect i))
 
+;;;ALL-SQUARES
+
 (defconstant all-columns
   (loop for i from 2 to 8 collect i))
+
+;;;ALL-COLUMNS
 
 (defun initial-board ()
   "Return a board, empty except for four pieces in the middle."
@@ -49,22 +53,35 @@
   "Valid moves are numbers in the range 1-7."
   (and (integerp col) (<= 2 col 8)))
 
+;;;(valid-p 1)
+;;;(valid-p 2)
+;;;(valid-p 8)
+;;;(valid-p 9)
+
 (defun legal-p (col board)
   "A Legal move must be into an empty square."
   (eql (bref board (+ col 9)) empty))
 
 ;;; (legal-p 1 (initial-board))
+;;; (legal-p 2 (initial-board))
 
 (defun make-move (col player board)
   "Update board to reflect move by player"
   ;; First make the move, then make any flips
   (setf (bref board (top-empty-square board col)) player)
-	board)
+  board)
+
+;;;(make-move 2 black (initial-board))
+;;;(make-move 2 white (make-move 2 black (initial-board)))
+;;;(make-move 4 white (make-move 3 black (make-move 4 white (make-move 4 black (initial-board)))))
+;;;(print-board (make-move 4 white (make-move 3 black (make-move 4 white (make-move 4 black (initial-board))))))
 
 (defun top-empty-square (board square)
   (if (eql (bref board (+ square 9)) empty)
       (top-empty-square board (+ square 9))
       square))
+
+;;;(top-empty-square (initial-board) 2)  
 
 (defun next-to-play (board previous-player)
   "Compute the player to move next, or NIL if nobody can move."
@@ -72,14 +89,20 @@
     (cond ((any-legal-move? board) opp)
           (t nil))))
 
+;;;(next-to-play (initial-board) black)
+
 (defun any-legal-move? (board)
   "Does player have any legal moves in this position?"
   (some #'(lambda (col) (legal-p col board))
         all-columns))
 
+;;;(any-legal-move? (initial-board))
+
 (defun random-strategy (player board)
   "Make any legal move."
   (random-elt (legal-moves board)))
+
+;;;(random-strategy black (initial-board))
 
 (defun legal-moves (board)
   "Returns a list of legal moves for player"
@@ -188,6 +211,8 @@
           (legal-moves board))
   (read))
 
+;;;(human black (initial-board))
+
 (defvar *move-number* 1 "The number of the move to be played")
 
 (defun play-game (bl-strategy wh-strategy &optional (print t))
@@ -206,6 +231,9 @@
         (format t "~&The game is over.  Final result:")
         (print-board board))
       (count-difference black board))))
+
+;;;(play-game #'random-strategy #'random-strategy)
+;;;(play-game #'human #'random-strategy)
 
 (defvar *board* (initial-board) "A copy of the game board")
 
@@ -240,18 +268,14 @@
             
 ;;;(print-board (initial-board))
 
-(defun time-string (time)
-  "Return a string representing this internal time in min:secs."
-  (multiple-value-bind (min sec)
-      (floor (round time internal-time-units-per-second) 60)
-    (format nil "~2d:~2,'0d" min sec)))
-
 (defun random-game-series (strategy1 strategy2 n-pairs &optional (n-random 10))
   "Play a series of 2*n games, starting from a random position."
   (game-series
     (switch-strategies #'random-strategy n-random strategy1)
     (switch-strategies #'random-strategy n-random strategy2)
     n-pairs))
+
+;;;(random-game-series #'random-strategy #'random-strategy 10)
 
 (defun switch-strategies (strategy1 m strategy2)
   "Make a new strategy that plays strategy1 for m moves,
@@ -303,6 +327,8 @@
       (dotimes (j N)
         (format t "~4f " (if (= i j) '---
                              (aref scores i j)))))))
+
+;;;(round-robin (list #'random-strategy #'random-strategy) 10)
 
 (defun mobility (board)
   "The number of moves a player has."
