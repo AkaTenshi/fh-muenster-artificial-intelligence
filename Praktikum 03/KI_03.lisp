@@ -1,4 +1,4 @@
-(defconstant all-directions '(-10 -9 -8 -1 1 8 9 10))
+(defconstant all-directions '(-10 -9 -8 1 10 9 8 1))
 
 (defconstant empty 0 "An empty square")
 (defconstant black 1 "A black piece")
@@ -133,8 +133,8 @@
              (best  (apply #'max scores)))
         (elt moves (position best scores)))))
 
-(defconstant winning-value most-positive-fixnum)
-(defconstant losing-value  most-negative-fixnum)
+(defconstant winning-value 4)
+(defconstant losing-value -4)
 
 (defun final-value (player board)
   "Is this a win, loss, or draw for player?"
@@ -142,6 +142,22 @@
     (-1 losing-value)
     ( 0 0)
     (+1 winning-value)))
+
+(defun 4-in-a-row? (board square)
+  (let ((player (bref board square)))
+    (loop for direction from 1 to 4 do
+	 (if (>= (+ (neighbors-count player board square (elt directions direction))
+		    (neighbors-count player board square (elt directions (+ direction 4)))) 4)
+	     t))
+
+(defun neighbors-count (player board square direction)
+  (cond
+    ((has-player-square? player board (+ square direction))
+     (1+ (neihgbors-count player board (+ square direction) direction)))
+    (t 0)))
+
+(defun has-player-square? (player board square)
+  (eql (bref board square) player))
 
 (defun minimax (player board ply eval-fn)
   "Find the best move, for PLAYER, according to EVAL-FN,
@@ -228,7 +244,7 @@
             until (null player)
             do (get-move strategy player board print))
       (when print
-        (format t "~&The game is over.  Final result:")
+        (format t "~&The game is over. The winner is  :)")
         (print-board board))
       (count-difference black board))))
 
@@ -246,14 +262,17 @@
   (let* ((col (funcall strategy player (replace *board* board))))
     (cond
       ((eq col 'resign)
-       (THROW 'game-over (if (eql player black) -42 42)))
+       (THROW 'game-over (if (eql player black) loosing-value winning-value)))
       ((and (valid-p col) (legal-p col board))
+       (let ((square (top-empty-square board col)))
        (when print
          (format t "~&~c moves to ~a." 
-                 (my-name-of player) (top-empty-square board col)))
-       (make-move col player board))
+                 (my-name-of player) square))
+       (make-move col player board)
+       (if (4-in-a-row? board square)
+	   (THROW 'game-over (if (eql player black) winning-value loosing-value)))))
       (t (warn "Illegal move: ~a" col)
-         (get-move strategy player board print)))))
+         (get-move strategy player board print))))))
 
 (defun print-board (&optional (board *board*))
   "Print a board, along with some statistics."
@@ -342,9 +361,3 @@
 (defun random-elt (seq) 
   "Pick a random element out of a sequence."
   (elt seq (random (length seq))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;; Tests ;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;;; (play-game #'human #'human)
