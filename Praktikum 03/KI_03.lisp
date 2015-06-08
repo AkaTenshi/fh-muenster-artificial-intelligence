@@ -65,11 +65,15 @@
 ;;; (legal-p 1 (initial-board))
 ;;; (legal-p 2 (initial-board))
 
+(defvar *last-move* 0 "The square of the last move that was played")
+
 (defun make-move (col player board)
   "Update board to reflect move by player"
   ;; First make the move, then make any flips
-  (setf (bref board (top-empty-square board col)) player)
-  board)
+  (let ((square (top-empty-square board col)))
+  	(setf (bref board square) player)
+  	(setf *last-move* sqquare)
+  board))
 
 ;;;(make-move 2 black (initial-board))
 ;;;(make-move 2 white (make-move 2 black (initial-board)))
@@ -136,19 +140,25 @@
 (defconstant winning-value 4)
 (defconstant losing-value -4)
 
-(defun final-value (player board)
-  "Is this a win, loss, or draw for player?"
-  (case (signum (count-difference player board))
-    (-1 losing-value)
-    ( 0 0)
-    (+1 winning-value)))
+(defun largest-row-of-player (player board)
+	(let ((largest-row 0))
+		(dolist (square all-squares)
+			(if (> (largest-row-of-square board square) largest-row)
+				(setf largest-row (largest-row-of-square board square)))))
+	largest-row)
 
 (defun 4-in-a-row? (board square)
-  (let ((player (bref board square)))
-    (loop for direction from 1 to 4 do
-	 (if (>= (+ (neighbors-count player board square (elt directions direction))
-		    (neighbors-count player board square (elt directions (+ direction 4)))) 4)
-	     t))
+  (>= (largest-row-of-square board square) 4))
+
+(defun largest-row-of-square (board square)
+	(let ((player (bref board square))
+		(largest-row 0)
+		(current-row 0))
+		(loop for direction from 1 to 4 do
+			(setf current-row (+ (neighbors-count player board square (elt directions direction))
+			    (neighbors-count player board square (elt directions (+ direction 4)))))
+		 	(if (> current-row largest-row)
+		     (setf largest-row current-row)))))
 
 (defun neighbors-count (player board square direction)
   (cond
@@ -158,6 +168,30 @@
 
 (defun has-player-square? (player board square)
   (eql (bref board square) player))
+
+(defun get-row-length-weight (length)
+	(cond
+		((eql length 1) 1)
+		((eql length 2) 5)
+		((eql length 3) 20)
+		((>0 length 4) most-positive-fixnum)
+		(t 0)))
+
+(defun single-row-length (player board)
+	(get-row-length-weight (largest-row-of-player player board))
+	)
+
+(defun multiple-row-length (player board)
+	(let ((sum 0))
+		(dolist (square all-squares)
+			(+ sum (get-row-length-weight (largest-row-of-square board square))))))
+
+(defun final-value (player board)
+  "Is this a win, loss, or draw for player?"
+  (cond
+  	((>= (largest-row-of-player player board) 4 winning-value))
+    ((>= (largest-row-of-player (opponent player) board) 4 losing-value))
+    (t 0)))
 
 (defun minimax (player board ply eval-fn)
   "Find the best move, for PLAYER, according to EVAL-FN,
@@ -244,9 +278,9 @@
             until (null player)
             do (get-move strategy player board print))
       (when print
-        (format t "~&The game is over. The winner is  :)")
+        (format t "~&The game is over. Final result: "
         (print-board board))
-      (count-difference black board))))
+      )))
 
 ;;;(play-game #'random-strategy #'random-strategy)
 ;;;(play-game #'human #'random-strategy)
@@ -270,9 +304,9 @@
                  (my-name-of player) square))
        (make-move col player board)
        (if (4-in-a-row? board square)
-	   (THROW 'game-over (if (eql player black) winning-value loosing-value)))))
+	   (THROW 'game-over winning-value))))
       (t (warn "Illegal move: ~a" col)
-         (get-move strategy player board print))))))
+         (get-move strategy player board print)))))
 
 (defun print-board (&optional (board *board*))
   "Print a board, along with some statistics."
