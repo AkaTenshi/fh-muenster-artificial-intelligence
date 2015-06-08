@@ -1,4 +1,4 @@
-(defconstant all-directions '(-10 -9 -8 1 10 9 8 1))
+(defconstant all-directions '(-10 -9 -8 -1 10 9 8 1))
 
 (defconstant empty 0 "An empty square")
 (defconstant black 1 "A black piece")
@@ -26,7 +26,7 @@
 ;;;ALL-SQUARES
 
 (defconstant all-columns
-  (loop for i from 2 to 8 collect i))
+  (loop for i from 1 to 9 collect i))
 
 ;;;ALL-COLUMNS
 
@@ -50,7 +50,7 @@
      (count (opponent player) board)))
 
 (defun valid-p (col)
-  "Valid moves are numbers in the range 1-7."
+  "Valid moves are numbers in the range 2-8."
   (and (integerp col) (<= 2 col 8)))
 
 ;;;(valid-p 1)
@@ -64,6 +64,8 @@
 
 ;;; (legal-p 1 (initial-board))
 ;;; (legal-p 2 (initial-board))
+;;; (legal-p 8 (initial-board))
+;;; (legal-p 9 (initial-board))
 
 (defvar *last-move* 0 "The square of the last move that was played")
 
@@ -71,9 +73,9 @@
   "Update board to reflect move by player"
   ;; First make the move, then make any flips
   (let ((square (top-empty-square board col)))
-  	(setf (bref board square) player)
-  	(setf *last-move* sqquare)
-  board))
+    (setf (bref board square) player)
+    (setf *last-move* square)
+    board))
 
 ;;;(make-move 2 black (initial-board))
 ;;;(make-move 2 white (make-move 2 black (initial-board)))
@@ -104,7 +106,7 @@
 
 (defun random-strategy (player board)
   "Make any legal move."
-  (random-elt (legal-moves board)))
+  (if (null player) nil (random-elt (legal-moves board))))
 
 ;;;(random-strategy black (initial-board))
 
@@ -112,13 +114,15 @@
   "Returns a list of legal moves for player"
   ;;*** fix, segre, 3/30/93.  Was remove-if, which can share with all-squares.
   (loop for col in all-columns
-     when (legal-p col board) collect col))
+     when (legal-p col board) collect (1- col)))
 
 ;;; (legal-moves (initial-board))
 
 (defun maximize-difference (player board)
   "A strategy that maximizes the difference in pieces."
   (funcall (maximizer #'count-difference) player board))
+
+;;(maximize-difference black (initial-board))
 
 (defun maximizer (eval-fn)
   "Return a strategy that will consider every legal move,
@@ -137,34 +141,58 @@
              (best  (apply #'max scores)))
         (elt moves (position best scores)))))
 
+(defun maximize-single-row-length (player board)
+  "A strategy that maximizes the difference in pieces."
+  (funcall (maximizer #'single-row-length) player board))
+
+;;; (maximize-single-row-length black (initial-board))
+
+(defun maximize-multiple-row-length (player board)
+  "A strategy that maximizes the difference in pieces."
+  (funcall (maximizer #'multiple-row-length) player board))
+
+;;; (maximize-multiple-row-length black (initial-board))
+
 (defconstant winning-value 4)
 (defconstant losing-value -4)
 
 (defun largest-row-of-player (player board)
 	(let ((largest-row 0))
-		(dolist (square all-squares)
-			(if (> (largest-row-of-square board square) largest-row)
-				(setf largest-row (largest-row-of-square board square)))))
-	largest-row)
+		(dolist (square all-squares largest-row)
+			(if (and (has-player-square? player board square) (> (largest-row-of-square board square) largest-row))
+				(setf largest-row (largest-row-of-square board square))))))
 
 (defun 4-in-a-row? (board square)
   (>= (largest-row-of-square board square) 4))
 
+;;;(4-in-a-row? (make-move 2 black (make-move 1 black (initial-board))) 56)
+;;;(4-in-a-row? (make-move 4 black (make-move 3 black (make-move 2 black (make-move 1 black (initial-board))))) 56)
+;;;(4-in-a-row? (make-move 4 black (make-move 3 black (make-move 2 black (make-move 1 black (initial-board))))) 58)
+
 (defun largest-row-of-square (board square)
-	(let ((player (bref board square))
-		(largest-row 0)
-		(current-row 0))
-		(loop for direction from 1 to 4 do
-			(setf current-row (+ (neighbors-count player board square (elt directions direction))
-			    (neighbors-count player board square (elt directions (+ direction 4)))))
-		 	(if (> current-row largest-row)
-		     (setf largest-row current-row)))))
+  (let ((player (bref board square))
+	(current-row 1)
+	(largest-row 1))
+    (loop for direction from 0 to 3 do
+	 (setq current-row (+ 1 (neighbors-count player board square (elt all-directions direction))
+			    (neighbors-count player board square (elt all-directions (+ direction 4)))))
+	 (if (> current-row largest-row)
+	     (setq largest-row current-row)))
+    largest-row))
+
+;;;(largest-row-of-square (make-move 1 black (initial-board)) 56)
+;;;(largest-row-of-square (make-move 4 black (make-move 3 black (make-move 2 black (make-move 1 black (initial-board))))) 58)
 
 (defun neighbors-count (player board square direction)
+  (if (null (member (+ square direction) all-squares)) 0
   (cond
     ((has-player-square? player board (+ square direction))
-     (1+ (neihgbors-count player board (+ square direction) direction)))
-    (t 0)))
+     (1+ (neighbors-count player board (+ square direction) direction)))
+    (t 0))))
+
+;;;(neighbors-count black (make-move 3 black (make-move 2 black (initial-board))) 57 1)
+;;;(neighbors-count black (make-move 4 black (make-move 3 black (make-move 2 black (initial-board)))) 57 1)
+;;;(neighbors-count black (initial-board) 62 10)
 
 (defun has-player-square? (player board square)
   (eql (bref board square) player))
@@ -174,17 +202,22 @@
 		((eql length 1) 1)
 		((eql length 2) 5)
 		((eql length 3) 20)
-		((>0 length 4) most-positive-fixnum)
+		((> 0 length 4) most-positive-fixnum)
 		(t 0)))
 
 (defun single-row-length (player board)
-	(get-row-length-weight (largest-row-of-player player board))
-	)
+	(get-row-length-weight (largest-row-of-player player board)))
+
+;;; (single-row-length black (make-move 3 black (initial-board)))
 
 (defun multiple-row-length (player board)
-	(let ((sum 0))
-		(dolist (square all-squares)
-			(+ sum (get-row-length-weight (largest-row-of-square board square))))))
+  (let ((sum 0))
+    (dolist (square all-squares)
+      (if (has-player-square? player board square) (incf sum (get-row-length-weight (largest-row-of-square board square)))))
+    sum))
+
+;;; (multiple-row-length black (make-move 3 black (initial-board)))
+;;; (multiple-row-length black (make-move 3 black (make-move 3 black (initial-board))))
 
 (defun final-value (player board)
   "Is this a win, loss, or draw for player?"
@@ -268,7 +301,8 @@
 (defun play-game (bl-strategy wh-strategy &optional (print t))
   "Play a game.  Return the score, where a positive
   difference means black, the first player, wins."
-  (let ((board (initial-board)))
+  (let ((board (initial-board))
+	(last-player black))
     (catch 'game-over
       (loop for *move-number* from 1
             for player = black then (next-to-play board player)
@@ -276,14 +310,17 @@
                                bl-strategy
                                wh-strategy)
             until (null player)
-            do (get-move strategy player board print))
+	 do
+	   (setq last-player player)
+	   (get-move strategy player board print)))
       (when print
-        (format t "~&The game is over. Final result: "
+        (format t "~&~&The game is over and player '~c' has won :)~&Final result: " (my-name-of last-player))
         (print-board board))
-      )))
+      (count-difference black board)))
 
 ;;;(play-game #'random-strategy #'random-strategy)
 ;;;(play-game #'human #'random-strategy)
+;;;(play-game #'random-strategy #'human)
 
 (defvar *board* (initial-board) "A copy of the game board")
 
@@ -293,10 +330,10 @@
   ;; Note we don't pass the strategy function the REAL board.
   ;; If we did, it could cheat by changing the pieces on the board.
   (when print (print-board board))
-  (let* ((col (funcall strategy player (replace *board* board))))
+  (let* ((col (1+ (funcall strategy player (replace *board* board)))))
     (cond
       ((eq col 'resign)
-       (THROW 'game-over (if (eql player black) loosing-value winning-value)))
+       (THROW 'game-over (if (eql player black) losing-value winning-value)))
       ((and (valid-p col) (legal-p col board))
        (let ((square (top-empty-square board col)))
        (when print
@@ -315,8 +352,8 @@
   ;; Print the board itself
   (loop for row from 1 to 6 do
         (format t "~&  ~d " row)
-        (loop for col from 2 to 8
-              for piece = (bref board (+ col (* 9 row)))
+        (loop for col from 1 to 7
+              for piece = (bref board (+ 1 col (* 9 row)))
               do (format t "~c " (my-name-of piece)))))
             
 ;;;(print-board (initial-board))
@@ -352,6 +389,8 @@
                (/ (count-if #'zerop scores) 2))
             (apply #'+ scores)
             scores)))
+
+;;;(game-series #'random-strategy #'random-strategy 2)
 
 (defun round-robin (strategies n-pairs &optional (n-random 10) (names strategies))
   "Play a tournament among the strategies.
