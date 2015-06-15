@@ -66,6 +66,7 @@
 ;;; (legal-p 2 (initial-board))
 ;;; (legal-p 8 (initial-board))
 ;;; (legal-p 9 (initial-board))
+;;; (legal-p 2 (create-board black (initial-board) '(2 2 2 2 2 2)))
 
 (defvar *last-move* 0 "The square of the last move that was played")
 
@@ -73,8 +74,10 @@
   "Update board to reflect move by player"
   ;; First make the move, then make any flips
   (let ((square (top-empty-square board col)))
-    (setf (bref board square) player)
-    (setf *last-move* square)
+    (if (not (eql square -1))
+      (progn
+        (setf (bref board square) player)
+        (setf *last-move* square)))
     board))
 
 ;;;(make-move 2 black (initial-board))
@@ -82,10 +85,20 @@
 ;;;(make-move 4 white (make-move 3 black (make-move 4 white (make-move 4 black (initial-board)))))
 ;;;(print-board (make-move 4 white (make-move 3 black (make-move 4 white (make-move 4 black (initial-board))))))
 
+(defun create-board (player board moves)
+  (let ((player player))
+  (dolist (move moves)
+    (setf board (make-move move player board))
+    (setf player (opponent player))))
+  board)
+
+;;; (create-board black (initial-board) '(2 3 4 5 6 7 8))
+;;; (print-board (create-board black (initial-board) '(2 3 4 5 6 7 8)))
+
 (defun top-empty-square (board square)
   (if (eql (bref board (+ square 9)) empty)
       (top-empty-square board (+ square 9))
-      square))
+      -1))
 
 ;;;(top-empty-square (initial-board) 2)  
 
@@ -114,9 +127,13 @@
   "Returns a list of legal moves for player"
   ;;*** fix, segre, 3/30/93.  Was remove-if, which can share with all-squares.
   (loop for col in all-columns
-     when (legal-p col board) collect (1- col)))
+     when (legal-p col board) collect col))
+
+(defun legal-moves-1 (board)
+  (mapcar #'1- (legal-moves board)))
 
 ;;; (legal-moves (initial-board))
+;;; (legal-moves-1 (initial-board))
 
 (defun maximize-difference (player board)
   "A strategy that maximizes the difference in pieces."
@@ -153,8 +170,11 @@
 
 ;;; (maximize-multiple-row-length black (initial-board))
 
-(defconstant winning-value 4)
-(defconstant losing-value -4)
+;(defconstant winning-value most-positive-fixnum)
+;(defconstant losing-value (- 0 most-positive-fixnum))
+
+(defconstant winning-value 999999999999)
+(defconstant losing-value (- 0 winning-value))
 
 (defun largest-row-of-player (player board)
 	(let ((largest-row 0))
@@ -165,9 +185,9 @@
 (defun 4-in-a-row? (board square)
   (>= (largest-row-of-square board square) 4))
 
-;;;(4-in-a-row? (make-move 2 black (make-move 1 black (initial-board))) 56)
-;;;(4-in-a-row? (make-move 4 black (make-move 3 black (make-move 2 black (make-move 1 black (initial-board))))) 56)
-;;;(4-in-a-row? (make-move 4 black (make-move 3 black (make-move 2 black (make-move 1 black (initial-board))))) 58)
+;;; (4-in-a-row? (make-move 2 black (make-move 1 black (initial-board))) 56)
+;;; (4-in-a-row? (create-board black (initial-board) '(2 1 3 1 4 1 5)) 56)
+;;; (4-in-a-row? (create-board black (initial-board) '(2 1 3 1 4 1 5)) 58)
 
 (defun largest-row-of-square (board square)
   (let ((player (bref board square))
@@ -181,7 +201,7 @@
     largest-row))
 
 ;;;(largest-row-of-square (make-move 1 black (initial-board)) 56)
-;;;(largest-row-of-square (make-move 4 black (make-move 3 black (make-move 2 black (make-move 1 black (initial-board))))) 58)
+;;;(largest-row-of-square (make-move 5 black (make-move 4 black (make-move 3 black (make-move 2 black (initial-board))))) 58)
 
 (defun neighbors-count (player board square direction)
   (if (null (member (+ square direction) all-squares)) 0
@@ -202,29 +222,77 @@
 		((eql length 1) 1)
 		((eql length 2) 5)
 		((eql length 3) 20)
-		((> 0 length 4) most-positive-fixnum)
+		((>= length 4) winning-value)
 		(t 0)))
 
 (defun single-row-length (player board)
 	(get-row-length-weight (largest-row-of-player player board)))
 
-;;; (single-row-length black (make-move 3 black (initial-board)))
+;;; (print-board (create-board black (initial-board) '(3 2 4 2 5 2 6)))
+;;; (single-row-length black (create-board black (initial-board) '(3 2 4 2 5 2 6)))
+;;; (largest-row-of-square (create-board black (initial-board) '(3 2 4 2 5 2 6)) 58)
+;;; (get-row-length-weight 4)
+;;; (single-row-length black (create-board black (initial-board) '(2 2 3 2 4 2 5)))
 
 (defun multiple-row-length (player board)
   (let ((sum 0))
     (dolist (square all-squares)
-      (if (has-player-square? player board square) (incf sum (get-row-length-weight (largest-row-of-square board square)))))
+      (if (< sum winning-value)
+        (if (has-player-square? player board square)
+          (incf sum (get-row-length-weight (largest-row-of-square board square))))))
     sum))
 
 ;;; (multiple-row-length black (make-move 3 black (initial-board)))
-;;; (multiple-row-length black (make-move 3 black (make-move 3 black (initial-board))))
+;;; (multiple-row-length black (create-board black (initial-board) '(2 2 3 2 4 2 5)))
+
+(defun multiple-row-length-column (player board)
+  (let ((sum 0))
+    (dolist (column all-columns)
+      (if (has-player-square? player board (+ 9 (top-empty-square board column)))
+        (if (4-in-a-row? board (+ 9 (top-empty-square board column)))
+          winning-value
+          (incf sum (get-row-length-weight (largest-row-of-square board (+ 9 (top-empty-square board column))))))))
+    sum))
+
+(defun row-length-both-players (player board eval-fn)
+  (let* ((ply (funcall eval-fn player board))
+    (opp (funcall eval-fn (opponent player) board))
+    (result 0))
+    (if (>= opp winning-value)
+      (setf result losing-value)
+      (setf result (- ply opp)))
+    ;(if (> result 20)
+      (progn
+        (format t "~&----------------------------------------------")
+        (format t "~&'1. ~c': ~f" (my-name-of player) ply)
+        (format t "~&'2. ~c': ~f" (my-name-of (opponent player)) opp)
+        (print-board board)
+        (format t "~&Result was ~a" result)
+        (format t "~&----------------------------------------------"))
+    result))
+
+(defun single-row-length-both-players (player board)
+  (row-length-both-players player board #'single-row-length))
+
+;;; (single-row-length-both-players black (create-board black (initial-board) '(2 3 2 3 4 3 7 3 7)))
+;;; (legal-moves (create-board black (initial-board) '(2 3 2 3 4 3 7 3 7)))
+;;; (single-row-length-both-players black (create-board black (initial-board) '(3 3 3 3 3 3)))
+
+(defun multiple-row-length-both-players (player board)
+  (row-length-both-players player board #'multiple-row-length))
+
+;;; (multiple-row-length-both-players black (create-board black (initial-board) '(2 3 2 3 4 3 7 3 7)))
 
 (defun final-value (player board)
   "Is this a win, loss, or draw for player?"
-  (cond
-  	((>= (largest-row-of-player player board) 4 winning-value))
-    ((>= (largest-row-of-player (opponent player) board) 4 losing-value))
-    (t 0)))
+  ; (cond
+  ; 	((>= (largest-row-of-player player board) 4) winning-value)
+  ;   ((>= (largest-row-of-player (opponent player) board) 4) losing-value)
+  ;   (t 0)))
+  (case (signum (single-row-length-both-players player board))
+    (-1 losing-value)
+    (0 0)
+    (1 winning-value)))
 
 (defun minimax (player board ply eval-fn)
   "Find the best move, for PLAYER, according to EVAL-FN,
@@ -237,6 +305,7 @@
             (let ((best-move nil)
                   (best-val nil))
               (dolist (move moves)
+                ;(format t "~&Move: ~a" move)
                 (let* ((board2 (make-move move player
                                           (copy-board board)))
                        (val (- (minimax
@@ -252,9 +321,14 @@
   "A strategy that searches PLY levels and then uses EVAL-FN."
   #'(lambda (player board)
       (multiple-value-bind (value move)
-          (minimax player board ply eval-fn) 
+        (minimax player board ply eval-fn) 
         (declare (ignore value))
         move)))
+
+;;; (play-game (minimax-searcher 3 #'multiple-row-length) #'random-strategy)
+;;; (play-game (minimax-searcher 3 #'multiple-row-length) #'human)
+;;; (play-game (minimax-searcher 3 #'multiple-row-length-both-players) #'human)
+;;; (play-game (minimax-searcher 3 #'single-row-length-both-players) #'human)
 
 (defun alpha-beta (player board achievable cutoff ply eval-fn)
   "Find the best move, for PLAYER, according to EVAL-FN,
@@ -288,10 +362,13 @@
         (declare (ignore value))
         move)))
 
+;;; (play-game #'human (alpha-beta-searcher 3 #'single-row-length-both-players))
+;;; (play-game (alpha-beta-searcher 3 #'multiple-row-length-both-players) #'human)
+
 (defun human (player board)
   "A human player for the game"
   (format t "~&~c to move ~a: " (my-name-of player)
-          (legal-moves board))
+          (legal-moves-1 board))
   (read))
 
 ;;;(human black (initial-board))
@@ -337,13 +414,13 @@
       ((and (valid-p col) (legal-p col board))
        (let ((square (top-empty-square board col)))
        (when print
-         (format t "~&~c moves to ~a." 
-                 (my-name-of player) square))
+         (format t "~&~c moves to ~a in column ~a." 
+                 (my-name-of player) square (1- col)))
        (make-move col player board)
        (if (4-in-a-row? board square)
 	   (THROW 'game-over winning-value))))
-      (t (warn "Illegal move: ~a" col)
-         (get-move strategy player board print)))))
+      (t (warn "Illegal move: ~a" (1- col)
+         (get-move strategy player board print))))))
 
 (defun print-board (&optional (board *board*))
   "Print a board, along with some statistics."
